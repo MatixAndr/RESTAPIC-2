@@ -1,387 +1,249 @@
-//
-// Created by MateuszAndruszkiewic on 3.12.2024.
-//
-
 #include "test_framework.h"
-#include "../src/user.h"
-#include "../src/server.h"
-#include <iostream>
+#include "../src/json.hpp"
 #include "../src/routes.h"
+#include "../src/server.h"
+#include "../src/user.h"
+#include <winsock2.h>
+#include <string.h>
+#include <stdio.h>
 
-void test_http_request_parsing_1() {
-    const char* raw_request = "GET /users HTTP/1.1\r\nHost: localhost\r\n\r\n";
-    HttpRequest request;
-    int result = parse_http_request(raw_request, &request);
-    ASSERT_EQ(result, 1);
-    ASSERT_EQ(std::string(request.method), "GET");
-    ASSERT_EQ(std::string(request.path), "/users");
-    ASSERT_EQ(std::string(request.protocol), "HTTP/1.1");
+using json = nlohmann::json;
+
+typedef struct {
+    char response_buffer[MAX_RESPONSE_LENGTH];
+    int response_length;
+} MockSocket;
+
+int mock_send(MockSocket* mock_socket, const char* data, int data_length, int flags) {
+    mock_socket->response_length = data_length < MAX_RESPONSE_LENGTH ? data_length : MAX_RESPONSE_LENGTH - 1;
+    memcpy(mock_socket->response_buffer, data, mock_socket->response_length);
+    mock_socket->response_buffer[mock_socket->response_length] = '\0';
+    return data_length;
 }
 
-void test_http_request_parsing_2() {
-    const char* raw_request = "POST /users HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\r\n{\"name\":\"John\",\"lastname\":\"Doe\"}";
-    HttpRequest request;
-    int result = parse_http_request(raw_request, &request);
-    ASSERT_EQ(result, 1);
-    ASSERT_EQ(std::string(request.method), "POST");
-    ASSERT_EQ(std::string(request.path), "/users");
-    ASSERT_EQ(std::string(request.protocol), "HTTP/1.1");
-    ASSERT_EQ(std::string(request.body), "{\"name\":\"John\",\"lastname\":\"Doe\"}");
+const char* extract_body(const char* response) {
+    const char* body_start = strstr(response, "\r\n\r\n");
+    return body_start ? body_start + 4 : NULL;
 }
 
-void test_http_request_parsing_3() {
-    const char* raw_request = "PUT /users/1 HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\r\n{\"name\":\"Jane\"}";
-    HttpRequest request;
-    int result = parse_http_request(raw_request, &request);
-    ASSERT_EQ(result, 1);
-    ASSERT_EQ(std::string(request.method), "PUT");
-    ASSERT_EQ(std::string(request.path), "/users/1");
-    ASSERT_EQ(std::string(request.protocol), "HTTP/1.1");
-    ASSERT_EQ(std::string(request.body), "{\"name\":\"Jane\"}");
+int extract_status_code(const char* response) {
+    int status_code;
+    sscanf(response, "HTTP/1.1 %d", &status_code);
+    return status_code;
 }
 
-void test_http_request_parsing_4() {
-    const char* raw_request = "DELETE /users/1 HTTP/1.1\r\nHost: localhost\r\n\r\n";
-    HttpRequest request;
-    int result = parse_http_request(raw_request, &request);
-    ASSERT_EQ(result, 1);
-    ASSERT_EQ(std::string(request.method), "DELETE");
-    ASSERT_EQ(std::string(request.path), "/users/1");
-    ASSERT_EQ(std::string(request.protocol), "HTTP/1.1");
+void reset_users_for_integration() {
+    int count;
+    User* users = get_all_users(&count);
+    for (int i = count - 1; i >= 0; i--) {
+        delete_user(users[i].id);
+    }
 }
 
-void test_http_request_parsing_5() {
-    const char* raw_request = "GET /users?page=1&limit=10 HTTP/1.1\r\nHost: localhost\r\n\r\n";
-    HttpRequest request;
-    int result = parse_http_request(raw_request, &request);
-    ASSERT_EQ(result, 1);
-    ASSERT_EQ(std::string(request.method), "GET");
-    ASSERT_EQ(std::string(request.path), "/users?page=1&limit=10");
-    ASSERT_EQ(std::string(request.protocol), "HTTP/1.1");
-}
+void run_integration_tests() {
+    TEST_SUITE("API Endpoints");
 
-void test_http_response_generation_1() {
-    HttpResponse response;
-    const char* test_body = "{\"test\": \"data\"}";
-    prepare_http_response(&response, 200, "application/json", test_body);
-    ASSERT_EQ(response.status_code, 200);
-    ASSERT_EQ(std::string(response.status_message), "OK");
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_EQ(std::string(response.body), test_body);
-}
+    TEST_SETUP {
+        reset_users_for_integration();
+    });
 
-void test_http_response_generation_2() {
-    HttpResponse response;
-    const char* test_body = "<html><body>Hello, World!</body></html>";
-    prepare_http_response(&response, 200, "text/html", test_body);
-    ASSERT_EQ(response.status_code, 200);
-    ASSERT_EQ(std::string(response.status_message), "OK");
-    ASSERT_EQ(std::string(response.content_type), "text/html");
-    ASSERT_EQ(std::string(response.body), test_body);
-}
+    TEST_CASE("GET /users (empty)") {
+        const char* request = "GET /users HTTP/1.1\r\nHost: localhost:8888\r\n\r\n";
+        MockSocket mock_socket = {0};
 
-void test_http_response_generation_3() {
-    HttpResponse response;
-    prepare_http_response(&response, 404, "text/plain", "Not Found");
-    ASSERT_EQ(response.status_code, 404);
-    ASSERT_EQ(std::string(response.status_message), "Not Found");
-    ASSERT_EQ(std::string(response.content_type), "text/plain");
-    ASSERT_EQ(std::string(response.body), "Not Found");
-}
+        handle_request(request, (SOCKET)&mock_socket);
 
-void test_http_response_generation_4() {
-    HttpResponse response;
-    prepare_http_response(&response, 500, "text/plain", "Internal Server Error");
-    ASSERT_EQ(response.status_code, 500);
-    ASSERT_EQ(std::string(response.status_message), "Internal Server Error");
-    ASSERT_EQ(std::string(response.content_type), "text/plain");
-    ASSERT_EQ(std::string(response.body), "Internal Server Error");
-}
+        EXPECT(extract_status_code(mock_socket.response_buffer) == 200);
 
-void test_http_response_generation_5() {
-    HttpResponse response;
-    prepare_http_response(&response, 201, "application/json", "{\"id\": 1, \"message\": \"Created\"}");
-    ASSERT_EQ(response.status_code, 201);
-    ASSERT_EQ(std::string(response.status_message), "Created");
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_EQ(std::string(response.body), "{\"id\": 1, \"message\": \"Created\"}");
-}
+        const char* body = extract_body(mock_socket.response_buffer);
+        EXPECT(body != NULL);
 
-void test_add_user_integration() {
-    HttpRequest request;
-    strcpy(request.method, "POST");
-    strcpy(request.path, "/users");
-    strcpy(request.body, "{\"name\":\"John\",\"lastname\":\"Doe\"}");
+        json response_json = json::parse(body);
+        EXPECT(response_json.is_array());
+        EXPECT(response_json.empty());
+    });
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\r\n%s",
-            request.method, request.path, request.body);
+    TEST_CASE("POST /users with valid data") {
+        const char* post_request =
+            "POST /users HTTP/1.1\r\n"
+            "Host: localhost:8888\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            "{\"firstName\":\"John\",\"lastName\":\"Doe\",\"birthYear\":2000,\"group\":\"user\"}";
 
-    handle_request(raw_request, 0);
+        MockSocket post_socket = {0};
+        handle_request(post_request, (SOCKET)&post_socket);
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 201);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "\"id\":") != nullptr);
-}
+        EXPECT(extract_status_code(post_socket.response_buffer) == 201);
 
-void test_get_user_integration() {
-    int user_id = add_user("Jane", "Smith");
+        const char* body = extract_body(post_socket.response_buffer);
+        json response_json = json::parse(body);
+        EXPECT(response_json["firstName"] == "John");
+        EXPECT(response_json["lastName"] == "Doe");
+    });
 
-    HttpRequest request;
-    strcpy(request.method, "GET");
-    sprintf(request.path, "/users/%d", user_id);
-    strcpy(request.body, "");
+    TEST_CASE("GET /users with multiple users") {
+        add_user("User1", "Last1", 1990, "user");
+        add_user("User2", "Last2", 1991, "premium");
+        add_user("User3", "Last3", 1992, "admin");
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        const char* request = "GET /users HTTP/1.1\r\nHost: localhost:8888\r\n\r\n";
+        MockSocket mock_socket = {0};
+        handle_request(request, (SOCKET)&mock_socket);
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 200);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "\"name\":\"Jane\"") != nullptr);
-    ASSERT_TRUE(strstr(response.body, "\"lastname\":\"Smith\"") != nullptr);
-}
+        EXPECT(extract_status_code(mock_socket.response_buffer) == 200);
 
-void test_update_user_integration() {
-    int user_id = add_user("Bob", "Johnson");
+        const char* body = extract_body(mock_socket.response_buffer);
+        json response_json = json::parse(body);
+        EXPECT(response_json.is_array());
+        EXPECT(response_json.size() == 3);
+    });
 
-    HttpRequest request;
-    strcpy(request.method, "PUT");
-    sprintf(request.path, "/users/%d", user_id);
-    strcpy(request.body, "{\"name\":\"Robert\"}");
+    TEST_CASE("GET /users/:id with valid ID") {
+        add_user("John", "Doe", 2000, "user");
+        add_user("Jane", "Smith", 1995, "premium");
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        const char* request = "GET /users/2 HTTP/1.1\r\nHost: localhost:8888\r\n\r\n";
+        MockSocket mock_socket = {0};
+        handle_request(request, (SOCKET)&mock_socket);
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 200);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "\"name\":\"Robert\"") != nullptr);
-    ASSERT_TRUE(strstr(response.body, "\"lastname\":\"Johnson\"") != nullptr);
-}
+        EXPECT(extract_status_code(mock_socket.response_buffer) == 200);
 
-void test_delete_user_integration() {
-    int user_id = add_user("Alice", "Brown");
+        const char* body = extract_body(mock_socket.response_buffer);
+        json response_json = json::parse(body);
+        EXPECT(response_json["id"] == 2);
+        EXPECT(response_json["firstName"] == "Jane");
+    });
 
-    HttpRequest request;
-    strcpy(request.method, "DELETE");
-    sprintf(request.path, "/users/%d", user_id);
-    strcpy(request.body, "");
+    TEST_CASE("GET /users/:id with invalid ID") {
+        const char* request = "GET /users/999 HTTP/1.1\r\nHost: localhost:8888\r\n\r\n";
+        MockSocket mock_socket = {0};
+        handle_request(request, (SOCKET)&mock_socket);
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        EXPECT(extract_status_code(mock_socket.response_buffer) == 404);
+    });
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 204);
+    TEST_CASE("PATCH /users/:id with valid data") {
+        add_user("Original", "Name", 2000, "user");
 
-    strcpy(request.method, "GET");
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        const char* patch_request =
+            "PATCH /users/1 HTTP/1.1\r\n"
+            "Host: localhost:8888\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            "{\"firstName\":\"Updated\",\"group\":\"premium\"}";
 
-    response = get_last_response();
-    ASSERT_EQ(response.status_code, 404);
-}
+        MockSocket patch_socket = {0};
+        handle_request(patch_request, (SOCKET)&patch_socket);
 
-void test_get_all_users_integration() {
-    add_user("User1", "Last1");
-    add_user("User2", "Last2");
-    add_user("User3", "Last3");
+        EXPECT(extract_status_code(patch_socket.response_buffer) == 200);
+    });
 
-    HttpRequest request;
-    strcpy(request.method, "GET");
-    strcpy(request.path, "/users");
-    strcpy(request.body, "");
+    TEST_CASE("PATCH /users/:id with invalid ID") {
+        const char* patch_request =
+            "PATCH /users/999 HTTP/1.1\r\n"
+            "Host: localhost:8888\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            "{\"firstName\":\"Updated\"}";
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        MockSocket patch_socket = {0};
+        handle_request(patch_request, (SOCKET)&patch_socket);
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 200);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "User1") != nullptr);
-    ASSERT_TRUE(strstr(response.body, "User2") != nullptr);
-    ASSERT_TRUE(strstr(response.body, "User3") != nullptr);
-}
+        EXPECT(extract_status_code(patch_socket.response_buffer) == 404);
+    });
 
-void test_add_user_invalid_json_integration() {
-    HttpRequest request;
-    strcpy(request.method, "POST");
-    strcpy(request.path, "/users");
-    strcpy(request.body, "{invalid_json}");
+    TEST_CASE("PATCH /users/:id with invalid group") {
+        add_user("Original", "Name", 2000, "user");
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        const char* patch_request =
+            "PATCH /users/1 HTTP/1.1\r\n"
+            "Host: localhost:8888\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            "{\"group\":\"invalid_group\"}";
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 400);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "error") != nullptr);
-}
+        MockSocket patch_socket = {0};
+        handle_request(patch_request, (SOCKET)&patch_socket);
 
-void test_get_nonexistent_user_integration() {
-    HttpRequest request;
-    strcpy(request.method, "GET");
-    strcpy(request.path, "/users/9999");
-    strcpy(request.body, "");
+        EXPECT(extract_status_code(patch_socket.response_buffer) == 404);
+    });
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+    TEST_CASE("DELETE /users/:id with valid ID") {
+        add_user("John", "Doe", 2000, "user");
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 404);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "error") != nullptr);
-}
+        const char* delete_request = "DELETE /users/1 HTTP/1.1\r\nHost: localhost:8888\r\n\r\n";
+        MockSocket delete_socket = {0};
+        handle_request(delete_request, (SOCKET)&delete_socket);
 
-void test_update_nonexistent_user_integration() {
-    HttpRequest request;
-    strcpy(request.method, "PUT");
-    strcpy(request.path, "/users/9999");
-    strcpy(request.body, "{\"name\":\"NewName\"}");
+        EXPECT(extract_status_code(delete_socket.response_buffer) == 204);
+    });
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+    TEST_CASE("DELETE /users/:id with invalid ID") {
+        const char* delete_request = "DELETE /users/999 HTTP/1.1\r\nHost: localhost:8888\r\n\r\n";
+        MockSocket delete_socket = {0};
+        handle_request(delete_request, (SOCKET)&delete_socket);
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 404);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "error") != nullptr);
-}
+        EXPECT(extract_status_code(delete_socket.response_buffer) == 404);
+    });
 
-void test_delete_nonexistent_user_integration() {
-    HttpRequest request;
-    strcpy(request.method, "DELETE");
-    strcpy(request.path, "/users/9999");
-    strcpy(request.body, "");
+    TEST_CASE("POST /users with invalid JSON") {
+        const char* request =
+            "POST /users HTTP/1.1\r\n"
+            "Host: localhost:8888\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            "{invalid_json}";
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        MockSocket mock_socket = {0};
+        handle_request(request, (SOCKET)&mock_socket);
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 404);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "error") != nullptr);
-}
+        EXPECT(extract_status_code(mock_socket.response_buffer) == 400);
+    });
 
-void test_invalid_http_method_integration() {
-    HttpRequest request;
-    strcpy(request.method, "INVALID");
-    strcpy(request.path, "/users");
-    strcpy(request.body, "");
+    TEST_CASE("POST /users with missing required fields") {
+        const char* request =
+            "POST /users HTTP/1.1\r\n"
+            "Host: localhost:8888\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            "{\"firstName\":\"John\"}";
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        MockSocket mock_socket = {0};
+        handle_request(request, (SOCKET)&mock_socket);
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 405);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "error") != nullptr);
-}
+        EXPECT(extract_status_code(mock_socket.response_buffer) == 400);
+    });
 
-void test_invalid_path_integration() {
-    HttpRequest request;
-    strcpy(request.method, "GET");
-    strcpy(request.path, "/invalid_path");
-    strcpy(request.body, "");
+    TEST_CASE("POST /users with invalid group") {
+        const char* request =
+            "POST /users HTTP/1.1\r\n"
+            "Host: localhost:8888\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            "{\"firstName\":\"John\",\"lastName\":\"Doe\",\"birthYear\":2000,\"group\":\"invalid\"}";
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        MockSocket mock_socket = {0};
+        handle_request(request, (SOCKET)&mock_socket);
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 404);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "error") != nullptr);
-}
+        EXPECT(extract_status_code(mock_socket.response_buffer) == 400);
+    });
 
-void test_server_error_simulation_integration() {
-    HttpRequest request;
-    strcpy(request.method, "POST");
-    strcpy(request.path, "/users");
-    strcpy(request.body, "{\"invalid_field\":\"value\"}");
+    TEST_CASE("Invalid endpoint") {
+        const char* request = "GET /invalid HTTP/1.1\r\nHost: localhost:8888\r\n\r\n";
+        MockSocket mock_socket = {0};
+        handle_request(request, (SOCKET)&mock_socket);
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
+        EXPECT(extract_status_code(mock_socket.response_buffer) == 404);
+    });
 
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 500);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "error") != nullptr);
-}
+    TEST_CASE("Invalid method") {
+        const char* request = "PUT /users HTTP/1.1\r\nHost: localhost:8888\r\n\r\n";
+        MockSocket mock_socket = {0};
+        handle_request(request, (SOCKET)&mock_socket);
 
-void test_large_payload_integration() {
-    HttpRequest request;
-    strcpy(request.method, "POST");
-    strcpy(request.path, "/users");
-    char large_body[10001] = "{\"name\":\"";
-    memset(large_body + 9, 'A', 9980);
-    strcat(large_body, "\",\"lastname\":\"Doe\"}");
-    strcpy(request.body, large_body);
+        EXPECT(extract_status_code(mock_socket.response_buffer) == 404);
+    });
 
-    char raw_request[4096];
-    sprintf(raw_request, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request.method, request.path, request.body);
-    handle_request(raw_request, 0);
-
-    HttpResponse response = get_last_response();
-    ASSERT_EQ(response.status_code, 413);
-    ASSERT_EQ(std::string(response.content_type), "application/json");
-    ASSERT_TRUE(strstr(response.body, "error") != nullptr);
-}
-
-void test_concurrent_requests_integration() {
-    HttpRequest request1, request2;
-    HttpResponse response1, response2;
-
-    strcpy(request1.method, "POST");
-    strcpy(request1.path, "/users");
-    strcpy(request1.body, "{\"name\":\"User1\",\"lastname\":\"Last1\"}");
-
-    strcpy(request2.method, "GET");
-    strcpy(request2.path, "/users");
-    strcpy(request2.body, "");
-
-    char raw_request1[4096], raw_request2[4096];
-    sprintf(raw_request1, "%s %s HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\r\n%s", request1.method, request1.path, request1.body);
-    sprintf(raw_request2, "%s %s HTTP/1.1\r\nHost: localhost\r\n\r\n%s", request2.method, request2.path, request2.body);
-
-    handle_request(raw_request1, 0);
-    response1 = get_last_response();
-    handle_request(raw_request2, 0);
-    response2 = get_last_response();
-
-    ASSERT_EQ(response1.status_code, 201);
-    ASSERT_EQ(response2.status_code, 200);
-    ASSERT_TRUE(strstr(response2.body, "User1") != nullptr);
-}
-
-int run_integration_tests() {
-    TestSuite suite;
-    suite.add_test("test_http_request_parsing_1", test_http_request_parsing_1);
-    suite.add_test("test_http_request_parsing_2", test_http_request_parsing_2);
-    suite.add_test("test_http_request_parsing_3", test_http_request_parsing_3);
-    suite.add_test("test_http_request_parsing_4", test_http_request_parsing_4);
-    suite.add_test("test_http_request_parsing_5", test_http_request_parsing_5);
-    suite.add_test("test_http_response_generation_1", test_http_response_generation_1);
-    suite.add_test("test_http_response_generation_2", test_http_response_generation_2);
-    suite.add_test("test_http_response_generation_3", test_http_response_generation_3);
-    suite.add_test("test_http_response_generation_4", test_http_response_generation_4);
-    suite.add_test("test_http_response_generation_5", test_http_response_generation_5);
-    suite.add_test("test_add_user_integration", test_add_user_integration);
-    suite.add_test("test_get_user_integration", test_get_user_integration);
-    suite.add_test("test_get_all_users_integration", test_get_all_users_integration);
-    suite.add_test("test_add_user_invalid_json_integration", test_add_user_invalid_json_integration);
-
-    suite.run();
-    return 0;
+    TestFramework::run_all();
 }

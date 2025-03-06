@@ -1,83 +1,95 @@
-//
-// Created by MateuszAndruszkiewic on 3.12.2024.
-//
-
+#include "server.h"
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
-#include "server.h"
 
-static HttpResponse last_response;
+#define MAX_BUFFER_SIZE 4096
 
-int parse_http_request(const char* raw_request, HttpRequest* request) {
-    char* request_copy = strdup(raw_request);
-    char* saveptr;
-    char* line;
-
-    line = strtok_r(request_copy, "\r\n", &saveptr);
-    if (!line) {
-        free(request_copy);
-        return 0;
+int start_server(const char* port) {
+    WSADATA wsa_data;
+    int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+    if (result != 0) {
+        printf("WSAStartup failed: %d\n", result);
+        return 1;
     }
 
-    sscanf(line, "%15s %255s %15s",
-           request->method,
-           request->path,
-           request->protocol);
+    struct addrinfo hints;
+    struct addrinfo* server_info;
+    struct addrinfo* p;
 
-    char* body_start = strstr(raw_request, "\r\n\r\n");
-    if (body_start) {
-        strncpy(request->body, body_start + 4, MAX_REQUEST_LENGTH - 1);
-    } else {
-        request->body[0] = '\0';
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    result = getaddrinfo(NULL, port, &hints, &server_info);
+    if (result != 0) {
+        printf("getaddrinfo failed: %d\n", result);
+        WSACleanup();
+        return 1;
     }
 
-    free(request_copy);
-    return 1;
-}
+    SOCKET server_socket = INVALID_SOCKET;
+    for (p = server_info; p != NULL; p = p->ai_next) {
+        server_socket = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (server_socket == INVALID_SOCKET) {
+            continue;
+        }
 
-void prepare_http_response(HttpResponse* response, int status_code,
-                           const char* content_type, const char* body) {
-    response->status_code = status_code;
+        result = bind(server_socket, p->ai_addr, (int)p->ai_addrlen);
+        if (result == SOCKET_ERROR) {
+            closesocket(server_socket);
+            server_socket = INVALID_SOCKET;
+            continue;
+        }
 
-    switch(status_code) {
-        case 200: strcpy(response->status_message, "OK"); break;
-        case 201: strcpy(response->status_message, "Created"); break;
-        case 204: strcpy(response->status_message, "No Content"); break;
-        case 400: strcpy(response->status_message, "Bad Request"); break;
-        case 404: strcpy(response->status_message, "Not Found"); break;
-        case 405: strcpy(response->status_message, "Method Not Allowed"); break;
-        case 413: strcpy(response->status_message, "Payload Too Large"); break;
-        case 500: strcpy(response->status_message, "Internal Server Error"); break;
-        default: strcpy(response->status_message, "Unknown"); break;
+        break;
     }
 
-    strncpy(response->content_type, content_type, sizeof(response->content_type) - 1);
-    strncpy(response->body, body, MAX_RESPONSE_LENGTH - 1);
+    freeaddrinfo(server_info);
 
-    // Update the last_response
-    memcpy(&last_response, response, sizeof(HttpResponse));
+    if (server_socket == INVALID_SOCKET) {
+        printf("Unable to bind to port %s\n", port);
+        WSACleanup();
+        return 1;
+    }
+
+    result = listen(server_socket, SOMAXCONN);
+    if (result == SOCKET_ERROR) {
+        printf("listen failed: %d\n", WSAGetLastError());
+        closesocket(server_socket);
+        WSACleanup();
+        return 1;
+    }
+
+    printf("Server listening on port %s\n", port);
+
+    SOCKET client_socket;
+    struct sockaddr_storage client_address;
+    socklen_t client_address_len = sizeof(client_address);
+    char buffer[MAX_BUFFER_SIZE];
+
+    while (1) {
+        client_socket = accept(server_socket, (struct sockaddr*)&client_address, &client_address_len);
+        if (client_socket == INVALID_SOCKET) {
+            printf("accept failed: %d\n", WSAGetLastError());
+            continue;
+        }
+
+        int bytes_received = recv(client_socket, buffer, MAX_BUFFER_SIZE - 1, 0);
+        if (bytes_received > 0) {
+            buffer[bytes_received] = '\0';
+            printf("Received: %s\n", buffer);
+
+            const char* response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello, World!";
+            send(client_socket, response, (int)strlen(response), 0);
+        }
+
+        closesocket(client_socket);
+    }
+
+    closesocket(server_socket);
+    WSACleanup();
+    return 0;
 }
-
-void send_http_response(SOCKET client_socket, const HttpResponse* response) {
-    char full_response[MAX_RESPONSE_LENGTH];
-
-    snprintf(full_response, sizeof(full_response),
-             "HTTP/1.1 %d %s\r\n"
-             "Content-Type: %s\r\n"
-             "Content-Length: %zu\r\n"
-             "Connection: close\r\n"
-             "\r\n%s",
-             response->status_code,
-             response->status_message,
-             response->content_type,
-             strlen(response->body),
-             response->body);
-
-    send(client_socket, full_response, strlen(full_response), 0);
-}
-
-HttpResponse get_last_response() {
-    return last_response;
-}
-
