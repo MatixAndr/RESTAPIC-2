@@ -1,4 +1,0 @@
-#ifndef TEST_FRAMEWORK_H
-#define TEST_FRAMEWORK_H
-
-#endif //TEST_FRAMEWORK_H
