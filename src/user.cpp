@@ -1,5 +1,5 @@
-#include <stdio.h>
 #include <string.h>
+#include <stdio.h>
 #include <time.h>
 #include "user.h"
 
@@ -15,7 +15,7 @@ int is_valid_group(const char* group) {
 int calculate_age(int birthYear) {
     time_t t = time(NULL);
     struct tm tm = *localtime(&t);
-    int currentYear = tm.tm_year + 1900;
+    int    currentYear = tm.tm_year + 1900;
     return currentYear - birthYear;
 }
 
