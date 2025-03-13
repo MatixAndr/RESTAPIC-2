@@ -6,9 +6,7 @@
 #include "routes.h"
 #include <stdio.h>
 #include "user.h"
-
 #pragma comment(lib, "ws2_32.lib")
-
 #define PORT 8888
 #define MAX_REQUEST_SIZE 4096
 
@@ -19,33 +17,26 @@ void run_server() {
     char request_buffer[MAX_REQUEST_SIZE];
     int client_addr_len = sizeof(client_addr);
     int recv_size;
-
     printf("RESTAPIC Server - Starting...\n");
-
     if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
         printf("Failed to initialize Winsock. Error Code: %d\n", WSAGetLastError());
         return;
     }
-
     if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET) {
         printf("Could not create socket. Error Code: %d\n", WSAGetLastError());
         WSACleanup();
         return;
     }
-
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(PORT);
-
     if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
         printf("Bind failed. Error Code: %d\n", WSAGetLastError());
         closesocket(server_socket);
         WSACleanup();
         return;
     }
-
     listen(server_socket, 5);
-
     printf("RESTAPIC Server running on port %d...\n", PORT);
     printf("Endpoints available:\n");
     printf("  GET    /users       - Get all users\n");
@@ -53,33 +44,26 @@ void run_server() {
     printf("  POST   /users       - Create a new user\n");
     printf("  PATCH  /users/:id   - Update user\n");
     printf("  DELETE /users/:id   - Delete user\n");
-
     while (1) {
-        if ((client_socket = accept(server_socket, (struct sockaddr *)&client_addr,
-                                    &client_addr_len)) == INVALID_SOCKET) {
+        if ((client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_len)) == INVALID_SOCKET) {
             printf("Accept failed. Error Code: %d\n", WSAGetLastError());
             continue;
         }
-
         char client_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
         printf("Connection accepted from %s:%d\n", client_ip, ntohs(client_addr.sin_port));
-
         memset(request_buffer, 0, MAX_REQUEST_SIZE);
         if ((recv_size = recv(client_socket, request_buffer, MAX_REQUEST_SIZE, 0)) == SOCKET_ERROR) {
             printf("recv failed. Error Code: %d\n", WSAGetLastError());
             closesocket(client_socket);
             continue;
         }
-
         if (recv_size > 0) {
             request_buffer[recv_size] = '\0';
             handle_request(request_buffer, client_socket);
         }
-
         closesocket(client_socket);
     }
-
     closesocket(server_socket);
     WSACleanup();
 }
@@ -87,10 +71,8 @@ void run_server() {
 void run_tests(const char* test_type) {
     extern void run_unit_tests();
     extern void run_integration_tests();
-
     printf("RESTAPIC Test Framework\n");
     printf("Version: 1.3.7\n");
-
     if (strcmp(test_type, "u") == 0) {
         printf("Running unit tests...\n\n");
         run_unit_tests();

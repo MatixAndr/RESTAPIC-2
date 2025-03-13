@@ -16,12 +16,10 @@ typedef struct {
 int is_valid_group(const char* group);
 int calculate_age(int birthYear);
 int add_user(const char* firstName, const char* lastName, int birthYear, const char* group);
-
-User* get_user_by_id(int id);
-
 int update_user_partial(int id, const char* firstName, const char* lastName, int birthYear, const char* group);
 int delete_user(int id);
 
+User* get_user_by_id(int id);
 User* get_all_users(int* count);
 
-#endif // USER_H
+#endif
