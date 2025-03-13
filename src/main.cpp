@@ -93,9 +93,6 @@ void run_tests(const char* test_type) {
 
 void print_help() {
     printf("RESTAPIC - A lightweight REST API in C++\n");
-    printf("Version: 1.0.0\n");
-    printf("Date: 2025-03-06 21:57:26\n");
-    printf("Author: MatixAndr\n\n");
     printf("Usage:\n");
     printf("  restapic.exe                  - Start the server\n");
     printf("  restapic.exe --test <type>    - Run tests\n");
@@ -107,6 +104,9 @@ void print_help() {
 }
 
 int main(int argc, char* argv[]) {
+    #ifdef _WIN32
+        SetConsoleOutputCP(CP_UTF8);
+    #endif
     if (argc > 1) {
         if (strcmp(argv[1], "--test") == 0) {
             if (argc > 2) {
