@@ -2,9 +2,9 @@
 
 Prosty serwer REST API napisany w C++ z wykorzystaniem WinSock2 do obsługi połączeń sieciowych oraz zintegrowanym frameworkiem testowym z kolorowym podsumowaniem wyników.
 
-| Build Status | Windows Build | License | Last Commit | Issues |
-|--------------|---------------|---------|-------------|--------|
-| ![Build Status](https://github.com/matixandr/RESTAPIC-2/actions/workflows/cmake-single-platform.yml/badge.svg) | ![Windows Build](https://github.com/matixandr/RESTAPIC-2/actions/workflows/cmake-single-platform.yml/badge.svg   ?branch=master&event=push) | ![License](https://img.shields.io/github/license/MatixAndr09/RESTAPIC) | ![Last Commit](https://img.shields.io/github/last-commit/MatixAndr09/RESTAPIC) | ![Issues](https://img.shields.io/github/issues/MatixAndr09/RESTAPIC) |
+| Build Status | Windows Build                                                                                                                            | License | Last Commit | Issues |
+|--------------|------------------------------------------------------------------------------------------------------------------------------------------|---------|-------------|--------|
+| ![Build Status](https://github.com/matixandr/RESTAPIC-2/actions/workflows/cmake-single-platform.yml/badge.svg) | ![Windows Build](https://github.com/matixandr/RESTAPIC-2/actions/workflows/cmake-single-platform.yml/badge.svg?branch=master&event=push) | ![License](https://img.shields.io/github/license/MatixAndr09/RESTAPIC) | ![Last Commit](https://img.shields.io/github/last-commit/MatixAndr09/RESTAPIC) | ![Issues](https://img.shields.io/github/issues/MatixAndr09/RESTAPIC) |
 
 ## Opis
 
