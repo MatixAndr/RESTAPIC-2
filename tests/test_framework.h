@@ -8,6 +8,10 @@
 #include <chrono>
 #include <stdexcept>
 
+#define COLOR_GREEN "\033[32m"
+#define COLOR_RED "\033[31m"
+#define COLOR_RESET "\033[0m"
+
 typedef std::function<void()> TestFunction;
 
 struct TestCase {
@@ -86,7 +90,8 @@ public:
                     auto test_end = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double, std::milli> test_duration = test_end - test_start;
                     test.execution_time_ms = test_duration.count();
-                    std::cout << "  ✓ " << test.name << " (" << test.execution_time_ms << " ms)\n";
+                    std::cout << "  " << COLOR_GREEN << "✓" << COLOR_RESET << " "
+                              << test.name << " (" << test.execution_time_ms << " ms)\n";
                 }
                 catch (const std::exception& e) {
                     test.passed = false;
@@ -95,7 +100,8 @@ public:
                     auto test_end = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double, std::milli> test_duration = test_end - test_start;
                     test.execution_time_ms = test_duration.count();
-                    std::cout << "  ✗ " << test.name << " (" << test.execution_time_ms << " ms)\n";
+                    std::cout << "  " << COLOR_RED << "✗" << COLOR_RESET << " "
+                              << test.name << " (" << test.execution_time_ms << " ms)\n";
                     std::cout << "    Error: " << test.error_message << "\n";
                 }
                 catch (...) {
@@ -105,7 +111,8 @@ public:
                     auto test_end = std::chrono::high_resolution_clock::now();
                     std::chrono::duration<double, std::milli> test_duration = test_end - test_start;
                     test.execution_time_ms = test_duration.count();
-                    std::cout << "  ✗ " << test.name << " (" << test.execution_time_ms << " ms)\n";
+                    std::cout << "  " << COLOR_RED << "✗" << COLOR_RESET << " "
+                              << test.name << " (" << test.execution_time_ms << " ms)\n";
                     std::cout << "    Error: Unknown error\n";
                 }
                 if (suite.teardown) {
@@ -119,8 +126,8 @@ public:
         std::cout << "Test Summary\n";
         std::cout << "----------------------------------------\n";
         std::cout << "Total tests: " << passed_tests + failed_tests << "\n";
-        std::cout << "Passed: " << passed_tests << "\n";
-        std::cout << "Failed: " << failed_tests << "\n";
+        std::cout << "Passed: " << COLOR_GREEN << passed_tests << COLOR_RESET << "\n";
+        std::cout << "Failed: " << COLOR_RED << failed_tests << COLOR_RESET << "\n";
         std::cout << "Execution time: " << total_duration.count() << " ms\n";
     }
     static std::string generate_json_report() {
