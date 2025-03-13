@@ -5,7 +5,7 @@ Prosty serwer REST API napisany w C++ z wykorzystaniem WinSock2 do obsługi poł
 | Build Status | Windows Build | License | Last Commit | Issues |
 |--------------|---------------|---------|-------------|--------|
 
-[//]: # (| ![Build Status]&#40;https://github.com/MatixAndr09/RESTAPIC/actions/workflows/makefile.yml/badge.svg&#41; | ![Windows Build]&#40;https://github.com/MatixAndr09/RESTAPIC/actions/workflows/makefile.yml/badge.svg?branch=master&event=push&#41; | ![License]&#40;https://img.shields.io/github/license/MatixAndr09/RESTAPIC&#41; | ![Last Commit]&#40;https://img.shields.io/github/last-commit/MatixAndr09/RESTAPIC&#41; | ![Issues]&#40;https://img.shields.io/github/issues/MatixAndr09/RESTAPIC&#41; |)
+| ![Build Status](https://github.com/matixandr/RESTAPIC-2/actions/workflows/cmake-single-platform.yml/badge.svg) | ![Windows Build](https://github.com/matixandr/RESTAPIC-2/actions/workflows/cmake-single-platform.yml/badge.svg   ?branch=master&event=push) | ![License](https://img.shields.io/github/license/MatixAndr09/RESTAPIC) | ![Last Commit](https://img.shields.io/github/last-commit/MatixAndr09/RESTAPIC) | ![Issues](https://img.shields.io/github/issues/MatixAndr09/RESTAPIC) |
 
 ## Opis
 
